@@ -27,6 +27,49 @@ It opens `http://127.0.0.1:8080/` in your browser. Useful flags:
 | `--user` / `--password` | — | if the server requires a login |
 | `--no-browser` | | don't open a browser |
 
+### Docker
+
+The image runs the HMI bound to `0.0.0.0` with `--no-browser`. Everything
+after the image name is passed to `cashmi`, so `--url` goes there:
+
+```bash
+docker build -t cas-hmi .
+docker run -d --name cas-hmi -p 8080:8080 --restart unless-stopped cas-hmi --url opc.tcp://<plc-host>:4840
+```
+
+When the container runs on the PLC itself, use the host network and the
+default `localhost` URL:
+
+```bash
+docker run -d --name cas-hmi --network host --restart unless-stopped cas-hmi
+```
+
+#### arm/v7 (32-bit ARM, e.g. WAGO PFC200, Raspberry Pi on a 32-bit OS)
+
+Cross-build with buildx and move the image over as a file:
+
+```bash
+docker buildx build --platform linux/arm/v7 -t cas-hmi:armv7 --load .
+docker save cas-hmi:armv7 -o cas-hmi-armv7.tar
+# copy cas-hmi-armv7.tar to the device, then on the device:
+docker load -i cas-hmi-armv7.tar
+```
+
+Docker Desktop has the QEMU emulation buildx needs. On a plain Linux build
+host, install it once with
+`docker run --privileged --rm tonistiigi/binfmt --install arm`.
+
+PyPI has no arm/v7 wheel for `cryptography` (an `asyncua` dependency), so on
+32-bit ARM the Dockerfile adds [piwheels](https://www.piwheels.org) as an
+extra index and installs its prebuilt `armv7l` wheel. No Rust toolchain is
+needed. If piwheels hasn't built the newest `cryptography` yet, pip falls back
+to the newest version that has a wheel.
+
+Building natively on the device works with the same Dockerfile
+(`docker build -t cas-hmi .`). The exception is a 32-bit userland on a 64-bit
+kernel, which reports `armv8l` instead of `armv7l` so the piwheels wheels
+don't match. Cross-build with buildx in that case.
+
 ### First run: check the tags
 
 ```bash

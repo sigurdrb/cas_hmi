@@ -419,8 +419,9 @@ const overAvg = (r) => {
   return (i === null || o === null) ? null : (i - o) * 100;   // m -> cm
 };
 // Pen.Status.PenOxygenLevel is the PID's process value but is never written in
-// the project, so the average of the three Orbit 864 sensors inside the pen is
-// what actually shows a number today.
+// the project, so the average of the Orbit 864 sensors inside the pen is what
+// actually shows a number today. A sensor the PLC marks BadQuality (failed
+// poll, bad data quality, or switched off) arrives as null and is left out.
 const o2Avg = (r) => avg([r.o2_sensor_1, r.o2_sensor_2, r.o2_sensor_3]);
 
 function buildCharts() {
@@ -448,7 +449,7 @@ function buildCharts() {
   ], "%", 1, "fast");
 
   register("o2", [
-    { label: "From sensors (avg of 3)", color: "--series-1", get: o2Avg },
+    { label: "From sensors (avg, good quality)", color: "--series-1", get: o2Avg },
     { label: "Pen.Status.PenOxygenLevel", color: "--series-2", get: (r) => r.pen_o2 },
     { label: "Setpoint", color: "--series-3", dash: true, get: (r) => r.o2_sp },
   ], "g/m³", 2, "slow");
@@ -473,7 +474,8 @@ function renderTiles() {
   let html = "";
   html += `<div class="tile"><div class="name">Pen oxygen (from sensors)</div>
     <div class="value">${fmt(o2Avg(L), 2)} <span class="unit">g/m³</span></div>
-    <div class="note">setpoint ${fmt(L.o2_sp, 2)} g/m³</div></div>`;
+    <div class="note">${[L.o2_sensor_1, L.o2_sensor_2, L.o2_sensor_3].filter((v) => typeof v === "number").length} of 3 sensors ·
+      setpoint ${fmt(L.o2_sp, 2)} g/m³</div></div>`;
 
   html += `<div class="tile"><div class="name">Over-height (from sensors)</div>
     <div class="value">${fmt(over, 1)} <span class="unit">cm</span></div>

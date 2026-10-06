@@ -77,7 +77,8 @@ python -m cashmi.browse --url opc.tcp://<plc-host>:4840
 ```
 
 This prints the node id it found for `GVLMain` and then resolves all 30 tags,
-one line each, `OK` or `NOT FOUND` with the reason. Add `--tree` to dump the
+one line each, `OK` or `NOT FOUND` with the reason, followed by the three
+oxygen sensors' `BadQuality` flags. Add `--tree` to dump the
 published tree. If the PLC project is renamed or restructured, this is the
 fastest way to see which paths in `cashmi/tags.py` need updating.
 
@@ -176,7 +177,14 @@ computes the same quantities client-side:
 | Shown as | Computed from |
 |---|---|
 | Over-height, "from sensors (avg)" | `Inlet[i].Input.LevelInsidePen.Filtered` − `…LevelOutsidePen.Filtered`, averaged over the three inlets |
-| Pen oxygen, "from sensors (avg of 3)" | `Pen.InputInside.Orbit864Sensor[i].OxygenConcentration.Filtered`, averaged |
+| Pen oxygen, "from sensors (avg, good quality)" | `Pen.InputInside.Orbit864Sensor[i].OxygenConcentration.Filtered`, averaged over the sensors whose `…OxygenConcentration.Status.BadQuality` is FALSE |
+
+A sensor is `BadQuality` when its last Modbus poll failed, its data quality word
+is not 0, or it is switched off in `PenConfig.Orbit864Config.Enabled`. That is
+the same rule `PenInsideSensors` uses for the PLC's own average. Such a sensor
+reads as "—" in the table and is left out of the average; the oxygen tile says
+how many of the three are in it. If the flag does not resolve (a PLC project
+without it), the value is shown unchecked and the log says so.
 
 Both charts also plot the PLC's own value as a second series, so the moment
 those get implemented the two lines should converge — and until then the flat
@@ -193,7 +201,8 @@ flag arrives, the same rule should be applied here.
 ## Configuration
 
 Tag paths live in `cashmi/tags.py`, one `Tag(key, path, label, unit, convert)`
-per value, with `path` dotted relative to `GVLMain`. To add a signal, add a
+per value, with `path` dotted relative to `GVLMain`. An optional `bad_path`
+names a BOOL that, when TRUE, makes the value read as null. To add a signal, add a
 `Tag` and reference its `key` in a chart's series list in
 `cashmi/static/index.html`. Unit conversions (m → cm, 12-bit raw → %) are the
 `convert` callable, applied once on the server side.

@@ -51,6 +51,8 @@ async def build(server: Server):
         sensor = await folder(pen_inside, f"Orbit864Sensor[{i}]")
         conc = await folder(sensor, "OxygenConcentration")
         await var(conc, "Filtered", 7.0, f"o2_sensor_{i + 1}")
+        status = await folder(conc, "Status")
+        await var(status, "BadQuality", False, f"o2_bad_{i + 1}")
 
     # -- controllers -----------------------------------------------------
     for name, out_key, sp_key in (("LevelController", "level_out", None),
@@ -131,6 +133,12 @@ async def drive(handles, speed: float):
             # three sensors, slightly apart, as real probes in one pen would be
             await handles[f"o2_sensor_{i + 1}"].write_value(
                 float(o2 + 0.06 * math.sin(t / 180.0 + i * 2.1)))
+        # sensor 3 drops out between 3 and 4 minutes: the PLC marks it
+        # BadQuality and the HMI must leave it out. Its value is forced to 0.0
+        # here so a failure to skip it is plain to see in the average.
+        await handles["o2_bad_3"].write_value(180 <= t < 240)
+        if 180 <= t < 240:
+            await handles["o2_sensor_3"].write_value(float(0.0))
         await handles["level_out"].write_value(float(base))
         await handles["o2_out"].write_value(float(45.0))
 

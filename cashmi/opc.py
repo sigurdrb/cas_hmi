@@ -199,12 +199,25 @@ class Collector:
             if not nodes:
                 raise RuntimeError("no tags resolved; nothing to display")
 
-            log.info("polling %d tag(s) every %.1fs", len(nodes), self.period)
+            # Quality flags. A flag that does not resolve (an older PLC
+            # project) is left out, and its value is shown as it reads.
+            bad_nodes: Dict[str, Node] = {}
+            for tag in T.ALL_TAGS:
+                if tag.bad_path and tag.key in nodes:
+                    try:
+                        bad_nodes[tag.key] = await resolver.resolve(tag.bad_path)
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("quality flag %s not found (%s); %s is shown unchecked",
+                                    tag.bad_path, exc, tag.key)
+
+            log.info("polling %d tag(s) and %d quality flag(s) every %.1fs",
+                     len(nodes), len(bad_nodes), self.period)
             self.history.connected = True
             self.history.error = None
 
             keys = list(nodes)
-            node_list = [nodes[k] for k in keys]
+            bad_keys = list(bad_nodes)
+            node_list = [nodes[k] for k in keys] + [bad_nodes[k] for k in bad_keys]
 
             while not self._stop.is_set():
                 started = time.monotonic()
@@ -213,8 +226,12 @@ class Collector:
                 except Exception:
                     raise  # bubble up to reconnect
 
+                bad = {k for k, flag in zip(bad_keys, raw[len(keys):]) if flag is True}
                 values: Dict[str, Any] = {}
-                for key, value in zip(keys, raw):
+                for key, value in zip(keys, raw[:len(keys)]):
+                    if key in bad:
+                        values[key] = None  # PLC marks it untrustworthy
+                        continue
                     tag = T.BY_KEY[key]
                     if isinstance(value, bool):
                         values[key] = value

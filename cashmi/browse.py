@@ -72,6 +72,17 @@ async def amain(args) -> int:
                 missing += 1
                 print(f"  NOT FOUND {tag.path:<52}   {exc}")
 
+        flags = [t for t in T.ALL_TAGS if t.bad_path]
+        if flags:
+            print("\n--- quality flags (a missing flag only means the value is shown unchecked) ---")
+            for tag in flags:
+                try:
+                    node = await resolver.resolve(tag.bad_path)
+                    value = await node.read_value()
+                    print(f"  OK        {tag.bad_path:<64} = {value!r}")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  NOT FOUND {tag.bad_path:<64}   {exc}")
+
         print(f"\n{len(T.ALL_TAGS) - missing}/{len(T.ALL_TAGS)} tags resolved.")
         if missing:
             print("Edit cashmi/tags.py so the paths match the project.")

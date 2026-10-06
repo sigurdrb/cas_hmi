@@ -25,6 +25,9 @@ class Tag:
     unit: str
     #: Optional conversion from the PLC's engineering units to display units.
     convert: Optional[Callable[[float], float]] = None
+    #: Optional dotted path to a BOOL that is TRUE when the value must not be
+    #: trusted. The value then reads as null, so averages and trends skip it.
+    bad_path: Optional[str] = None
 
 
 def _m_to_cm(value: float) -> float:
@@ -54,11 +57,16 @@ PEN_TAGS: List[Tag] = [
     Tag("level_out", "LevelController.Output.OUT", "Level PID output", "rpm"),
     Tag("o2_out", "OxyController.Output.OUT", "Oxygen PID output", "%"),
 ] + [
+    # BadQuality is TRUE when the sensor's last Modbus poll failed, its data
+    # quality word is not 0, or it is switched off in
+    # PenConfig.Orbit864Config.Enabled -- the same rule PenInsideSensors uses
+    # to leave a sensor out of the PLC's own average.
     Tag(
         f"o2_sensor_{i + 1}",
         f"Pen.InputInside.Orbit864Sensor[{i}].OxygenConcentration.Filtered",
         f"O₂ sensor {i + 1} inside",
         "g/m³",
+        bad_path=f"Pen.InputInside.Orbit864Sensor[{i}].OxygenConcentration.Status.BadQuality",
     )
     for i in range(N_OXYSENSORS_INSIDE)
 ]

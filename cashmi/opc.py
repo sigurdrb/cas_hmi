@@ -92,6 +92,23 @@ class Resolver:
             await self.find_gvlmain()
         assert self.root is not None
 
+        # Fast path: CODESYS string node ids are the variable path itself
+        # (`...Application.GVLMain.Inlet[0].InletPump.State`), so one read
+        # confirms the node. Walking by browse name reads every child's name at
+        # each level, thousands of requests for an array of structs; over a slow
+        # link the PFC200 drops the connection before the walk is done.
+        root_id = self.root.nodeid
+        if root_id.NodeIdType == ua.NodeIdType.String:
+            direct = self.client.get_node(
+                ua.NodeId(f"{root_id.Identifier}.{path}", root_id.NamespaceIndex)
+            )
+            try:
+                await direct.read_browse_name()
+                self._cache[path] = direct
+                return direct
+            except ua.UaError:
+                pass  # not a CODESYS-style id; browse instead
+
         node = self.root
         for segment in path.split("."):
             match = _INDEX_RE.match(segment)
@@ -99,14 +116,16 @@ class Resolver:
                 base, index = match.group("name"), match.group("index")
                 # CODESYS publishes array members either as one node whose browse
                 # name carries the subscript, or as an array node with indexed
-                # children. Try both spellings.
+                # children. The PFC200 (750-8212) names those children
+                # `Inlet[0]` under `Inlet`; other spellings are `[0]` and `0`.
                 found = await self._child_named(node, f"{base}[{index}]")
                 if found is None:
                     array_node = await self._child_named(node, base)
                     if array_node is not None:
-                        found = await self._child_named(array_node, f"[{index}]")
-                        if found is None:
-                            found = await self._child_named(array_node, index)
+                        for name in (f"{base}[{index}]", f"[{index}]", index):
+                            found = await self._child_named(array_node, name)
+                            if found is not None:
+                                break
                 node = found  # type: ignore[assignment]
             else:
                 node = await self._child_named(node, segment)  # type: ignore[assignment]

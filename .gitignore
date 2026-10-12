@@ -17,3 +17,8 @@ env/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Docker image exports (keep them in C:\Containers, never in git)
+*.tar
+*.tar.gz
+*.tgz

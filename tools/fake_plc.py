@@ -81,7 +81,7 @@ async def build(server: Server):
         await var(pump_out, "VelocitySetpoint", 0.0, f"pump_sp_{n}")
         pump_status = await folder(pump, "Status")
         await var(pump_status, "ActualSpeed", 0.0, f"pump_actual_{n}")
-        await var(pump, "State", 1, f"pump_state_{n}")
+        await var(pump, "State", 0, f"pump_state_{n}")  # InletPumpState: 0 Available, 2 Remote
 
         oxy = await folder(gvl, f"OxySystem[{i}]")
         valve = await folder(oxy, "OxyValve")
@@ -111,7 +111,7 @@ async def drive(handles, speed: float):
                 rpm = 0.0
             await handles[f"pump_sp_{n}"].write_value(float(rpm))
             await handles[f"pump_actual_{n}"].write_value(float(rpm * 0.98))
-            await handles[f"pump_state_{n}"].write_value(3 if rpm > 0 else 1)
+            await handles[f"pump_state_{n}"].write_value(2 if rpm > 0 else 0)  # Remote / Available
 
             pct = 0.0 if rpm <= 0 else 45.0 + 25.0 * math.sin(t / 40.0 + n)
             await handles[f"valve_{n}"].write_value(

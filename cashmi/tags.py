@@ -131,16 +131,17 @@ ALL_TAGS: List[Tag] = PEN_TAGS + [t for i in range(N_INLETS) for t in _inlet_tag
 BY_KEY = {t.key: t for t in ALL_TAGS}
 
 
-#: InletPumpState enum, for turning the numeric state into words.
-PUMP_STATE_NAMES = [
-    "Unavailable",
-    "Available",
-    "Starting",
-    "Remote",
-    "Hold",
-    "Stopping",
-    "Lockdown",
-]
+#: InletPumpState enum (ENUM.InletPumpState in the PLC), value -> name.
+#: The values are not consecutive: Unavailable is 9.
+PUMP_STATE_NAMES = {
+    0: "Available",
+    1: "Starting",
+    2: "Remote",
+    3: "Stopping",
+    4: "Hold",
+    5: "Lockdown",
+    9: "Unavailable",
+}
 
 
 # --------------------------------------------------------------------------

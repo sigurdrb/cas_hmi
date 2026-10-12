@@ -456,9 +456,14 @@ function buildCharts() {
 }
 
 // ---------------------------------------------------------------- tiles ----
+function stateName(code) {
+  // META.pump_states maps the InletPumpState value (as a string key) to its name.
+  const names = (META && META.pump_states) || {};
+  return (typeof code === "number" && names[String(Math.round(code))]) || "—";
+}
+
 function statePill(code) {
-  const names = (META && META.pump_states) || [];
-  const name = (typeof code === "number" && names[code]) ? names[code] : "—";
+  const name = stateName(code);
   let cls = "stop";
   if (name === "Remote" || name === "Starting") cls = "run";
   if (name === "Lockdown" || name === "Unavailable") cls = "fault";
@@ -500,7 +505,7 @@ function renderTable() {
   for (const k of keys) {
     const v = L[k];
     const shown = (k.startsWith("pump_state_"))
-      ? ((META.pump_states[v] !== undefined) ? META.pump_states[v] : "—")
+      ? stateName(v)
       : (typeof v === "number" ? fmt(v, 2) : (v === null || v === undefined ? "—" : String(v)));
     html += `<tr><td>${labels[k]}</td><td>${shown}</td><td>${units[k] || ""}</td></tr>`;
   }

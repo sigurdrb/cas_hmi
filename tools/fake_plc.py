@@ -47,6 +47,19 @@ async def build(server: Server):
     await var(pen_cmd, "LevelSetpoint", 0.06, "level_sp")
 
     pen_inside = await folder(pen, "InputInside")
+    pen_outside = await folder(pen, "InputOutside")
+    # the PLC's own pen averages (PenInsideSensors / PenOutsideSensors)
+    for parent, name, value, key in (
+        (pen_inside, "AverageOxygenInside", 7.0, "o2_avg"),
+        (pen_inside, "AverageOxygenSaturationInside", 80.0, "pen_o2_sat"),
+        (pen_inside, "AverageOverHeight", 0.0, "over_avg"),
+        (pen_inside, "AverageLevelInside", 1.0, "level_inside_avg"),
+        (pen_outside, "AverageLevelOutside", 1.0, "level_outside_avg"),
+    ):
+        node = await folder(parent, name)
+        await var(node, "Filtered", value, key)
+        st = await folder(node, "Status")
+        await var(st, "BadQuality", False, key + "_bad")
     for i in range(3):
         sensor = await folder(pen_inside, f"Orbit864Sensor[{i}]")
         conc = await folder(sensor, "OxygenConcentration")
@@ -115,7 +128,7 @@ async def drive(handles, speed: float):
 
             pct = 0.0 if rpm <= 0 else 45.0 + 25.0 * math.sin(t / 40.0 + n)
             await handles[f"valve_{n}"].write_value(
-                ua.Variant(int(pct / 100.0 * 4095), ua.VariantType.UInt16))
+                ua.Variant(int(pct / 100.0 * 65535), ua.VariantType.UInt16))
             await handles[f"oxyflow_{n}"].write_value(float(pct / 100.0 * 104.2))
 
         # level responds to pump speed with the level time constant
@@ -125,6 +138,9 @@ async def drive(handles, speed: float):
             await handles[f"level_outside_{n}"].write_value(float(outside))
             await handles[f"level_inside_{n}"].write_value(float(outside + over))
         await handles["pen_overheight"].write_value(float(over))
+        await handles["over_avg"].write_value(float(over))
+        await handles["level_inside_avg"].write_value(float(outside + over))
+        await handles["level_outside_avg"].write_value(float(outside))
 
         # oxygen drifts on its own, much slower time constant
         o2 = 7.0 + 2.0 * (1.0 - math.exp(-t / 2100.0)) + 0.05 * math.sin(t / 300.0)
@@ -139,6 +155,13 @@ async def drive(handles, speed: float):
         await handles["o2_bad_3"].write_value(180 <= t < 240)
         if 180 <= t < 240:
             await handles["o2_sensor_3"].write_value(float(0.0))
+        # the PLC's mean over the good sensors, and saturation for display
+        good = [await handles[f"o2_sensor_{i + 1}"].read_value() for i in range(3)
+                if not (i == 2 and 180 <= t < 240)]
+        mean = sum(good) / len(good)
+        await handles["pen_o2"].write_value(float(mean))
+        await handles["o2_avg"].write_value(float(mean))
+        await handles["pen_o2_sat"].write_value(float(100.0 * mean / 9.09))  # c_sat at 10 degC, 34 PSU
         await handles["level_out"].write_value(float(base))
         await handles["o2_out"].write_value(float(45.0))
 

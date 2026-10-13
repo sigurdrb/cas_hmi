@@ -163,32 +163,23 @@ steps, not an inverted light mode, and follows the OS unless you use the
 
 ---
 
-## Two values that will read zero
+## Pen averages come from the PLC
 
-`Pen.Status.OverHeight` and `Pen.Status.PenOxygenLevel` are the process values
-of the two pen-level PID loops — `InletSupervisor` passes both as
-`ProcessValue`. A project-wide search finds **no assignment to either**. They
-are read and never written, so on a real PLC both read 0 and both loops
-regulate on nothing.
+The HMI averages nothing itself. The pen values are the PLC's, computed in
+`PenInsideSensors` / `PenOutsideSensors` from the sensors that are enabled and
+of good quality, each shown with the PLC's `BadQuality` for the average:
 
-So the HMI does not depend on them. It reads the underlying instruments and
-computes the same quantities client-side:
-
-| Shown as | Computed from |
+| Shown as | PLC variable (below `GVLMain`) |
 |---|---|
-| Over-height, "from sensors (avg)" | `Inlet[i].Input.LevelInsidePen.Filtered` − `…LevelOutsidePen.Filtered`, averaged over the three inlets |
-| Pen oxygen, "from sensors (avg, good quality)" | `Pen.InputInside.Orbit864Sensor[i].OxygenConcentration.Filtered`, averaged over the sensors whose `…OxygenConcentration.Status.BadQuality` is FALSE |
+| Pen oxygen [mg/L] | `Pen.Status.PenOxygenLevel` (= `Pen.InputInside.AverageOxygenInside`), the oxygen controller's process value |
+| Saturation [%] | `Pen.InputInside.AverageOxygenSaturationInside` (display only; the controller regulates mg/L) |
+| Over-height [cm] | `Pen.Status.OverHeight` (= `AverageLevelInside` − `AverageLevelOutside`), the level controller's process value |
+| Level inside / outside [m] | `Pen.InputInside.AverageLevelInside`, `Pen.InputOutside.AverageLevelOutside` |
 
-A sensor is `BadQuality` when its last Modbus poll failed, its data quality word
-is not 0, or it is switched off in `PenConfig.Orbit864Config.Enabled`. That is
-the same rule `PenInsideSensors` uses for the PLC's own average. Such a sensor
-reads as "—" in the table and is left out of the average; the oxygen tile says
-how many of the three are in it. If the flag does not resolve (a PLC project
-without it), the value is shown unchecked and the log says so.
-
-Both charts also plot the PLC's own value as a second series, so the moment
-those get implemented the two lines should converge — and until then the flat
-zero line is visible rather than silent.
+The individual Orbit 864 sensors are still read, for the table and for the
+"mean of n of 3 sensors" note on the oxygen tile: a sensor is `BadQuality` when
+its last Modbus poll failed, its data quality word is not 0, or it is switched
+off in `PenConfig.Orbit864Config.Enabled`, and then reads "—".
 
 The functional description §3.2.2 specifies the over-height calculation as
 `DeltaH_avg = SUM(DeltaH_active) / count(active)`, with a per-sensor "active"

@@ -35,8 +35,9 @@ def _m_to_cm(value: float) -> float:
 
 
 def _raw_to_pct(value: float) -> float:
-    """AnalogValveOutputDUT.RawPosition is a 12-bit word, 0..4095 -> 0..100 %."""
-    return value / 4095.0 * 100.0
+    """AnalogValveOutputDUT.RawPosition: the PLC writes 0..65535 to the 750-563
+    (factory setting: 4..20 mA over the full 16-bit word) -> 0..100 % opening."""
+    return value / 65535.0 * 100.0
 
 
 # --------------------------------------------------------------------------
@@ -44,28 +45,44 @@ def _raw_to_pct(value: float) -> float:
 # --------------------------------------------------------------------------
 
 PEN_TAGS: List[Tag] = [
-    # Both of these are the process values the two pen-level PID loops read.
-    # As of this writing neither is written anywhere in the project (they are
-    # read in InletSupervisor and assigned nowhere), so on a real PLC they
-    # will read 0. The HMI therefore also reads the underlying sensors and
-    # shows both, so the gap is visible rather than silent. See README.
-    Tag("pen_o2", "Pen.Status.PenOxygenLevel", "Pen oxygen (PLC)", "g/m³"),
-    Tag("pen_overheight", "Pen.Status.OverHeight", "Over-height (PLC)", "cm", _m_to_cm),
+    # Pen averages are computed in the PLC (PenInsideSensors / PenOutsideSensors,
+    # from the sensors that are enabled and of good quality); the HMI shows them
+    # as they are and does no averaging of its own. Each comes with the PLC's
+    # BadQuality flag for the average (no valid sensor left).
+    #
+    # Pen.Status.PenOxygenLevel is the oxygen controller's process value: the
+    # mean O2 concentration [mg/L] of the inside sensors. Saturation [%] is
+    # averaged too, for display only; the controller does not use it.
+    Tag("pen_o2", "Pen.Status.PenOxygenLevel", "Pen O₂ (mean, PLC)", "mg/L",
+        bad_path="Pen.InputInside.AverageOxygenInside.Status.BadQuality"),
+    Tag("pen_o2_sat", "Pen.InputInside.AverageOxygenSaturationInside.Filtered",
+        "Pen O₂ saturation (mean, PLC)", "%",
+        bad_path="Pen.InputInside.AverageOxygenSaturationInside.Status.BadQuality"),
+    # Pen.Status.OverHeight is the level controller's process value:
+    # AverageLevelInside - AverageLevelOutside.
+    Tag("pen_overheight", "Pen.Status.OverHeight", "Over-height (PLC)", "cm", _m_to_cm,
+        bad_path="Pen.InputInside.AverageOverHeight.Status.BadQuality"),
+    Tag("level_inside_avg", "Pen.InputInside.AverageLevelInside.Filtered",
+        "Level inside (mean, PLC)", "m",
+        bad_path="Pen.InputInside.AverageLevelInside.Status.BadQuality"),
+    Tag("level_outside_avg", "Pen.InputOutside.AverageLevelOutside.Filtered",
+        "Level outside (mean, PLC)", "m",
+        bad_path="Pen.InputOutside.AverageLevelOutside.Status.BadQuality"),
 
     Tag("level_sp", "Pen.Command.LevelSetpoint", "Level setpoint", "cm", _m_to_cm),
-    Tag("o2_sp", "OxyController.Input.Setpoint", "Oxygen setpoint", "g/m³"),
+    Tag("o2_sp", "OxyController.Input.Setpoint", "Oxygen setpoint", "mg/L"),
     Tag("level_out", "LevelController.Output.OUT", "Level PID output", "rpm"),
     Tag("o2_out", "OxyController.Output.OUT", "Oxygen PID output", "%"),
 ] + [
-    # BadQuality is TRUE when the sensor's last Modbus poll failed, its data
-    # quality word is not 0, or it is switched off in
-    # PenConfig.Orbit864Config.Enabled -- the same rule PenInsideSensors uses
-    # to leave a sensor out of the PLC's own average.
+    # Each sensor on its own, for the table and the sensor count. BadQuality is
+    # TRUE when its last Modbus poll failed, its data quality word is not 0, or
+    # it is switched off in PenConfig.Orbit864Config.Enabled -- the sensors
+    # PenInsideSensors leaves out of the PLC's average.
     Tag(
         f"o2_sensor_{i + 1}",
         f"Pen.InputInside.Orbit864Sensor[{i}].OxygenConcentration.Filtered",
         f"O₂ sensor {i + 1} inside",
-        "g/m³",
+        "mg/L",
         bad_path=f"Pen.InputInside.Orbit864Sensor[{i}].OxygenConcentration.Status.BadQuality",
     )
     for i in range(N_OXYSENSORS_INSIDE)
@@ -170,6 +187,6 @@ FAST_POINTS = int(FAST_WINDOW_S / FAST_PERIOD_S) + 1
 SLOW_POINTS = int(SLOW_WINDOW_S / SLOW_PERIOD_S) + 1
 
 #: Which tags go on the slow trend; everything else rides the fast one.
-SLOW_KEYS = {"pen_o2", "o2_sp"} | {
+SLOW_KEYS = {"pen_o2", "pen_o2_sat", "o2_sp"} | {
     f"o2_sensor_{i + 1}" for i in range(N_OXYSENSORS_INSIDE)
 }
